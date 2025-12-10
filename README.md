@@ -15,12 +15,14 @@
 
 *Figure 1: Multi-Agent System Architecture - Picture shows the complete data flow from external sources through the agent orchestration layer to the AOM application interface*
 
-## Product Screenshot
-![MAS-DEV Sample](doc/chart_screenshot.png)
+### Key Features
 
-## Architecture Overview
+- **Orchestrator Agent**: Intent classification, agent routing, conversation management
+- **Information Synthesis Agent (ISA)**: Telemetry aggregation, statistical analysis, risk assessment
+- **Specialized Worker Agents**: Anomaly detection, predictive maintenance, inventory management
+- **Foundation Models**: Integration with Claude Sonnet 4, local LLMs via MCP
 
-The system consists of four main layers:
+### The system consists of four main layers:
 
 1. **External Sources Layer**: Integration with warehouse systems, CMMS, historians, and event data
 2. **Multi-Agent System Core**:
@@ -32,64 +34,25 @@ The system consists of four main layers:
 
 ---
 
-## MAS Orchestration Pattern:
+### Technology Stack
 
-```mermaid
-flowchart TD
-
-%% ====== STYLES ======
-classDef agent fill:#e7e0ff,stroke:#b8a8f0,stroke-width:1px,color:#000
-classDef human fill:#c4a8ff,stroke:#b8a8f0,stroke-width:1px,color:#000
-classDef rag fill:#efe6ff,stroke:#b8a8f0,stroke-width:1px,color:#000
-classDef io fill:#9b47d9,stroke:#b8a8f0,stroke-width:1px,color:#000
-
-%% ====== NODES ======
-Input(["Input"]):::io
-
-A["Orchestrator Agent <br/>(Q&A, assign agent)"]:::agent
-B["ISA Agent<br/>"]:::agent
-C["INV Agent <br/>"]:::agent
-D["MSA Agent <br/>"]:::agent
-E["RCA Agent <br/>"]:::agent
-F["RAG Agent <br/>"]:::agent
-
-Human["Human"]:::human
-Result(["Result"]):::io
-
-%% ====== POSITIONING ======
-Input --> A
-A -->|Asset Performance| B
-A -->|Inventory Management| C
-A -->|Maintenance Scheduling| D
-A -->|Root Cause & Solution| E
+| Category            | Technology           | Purpose                               |
+|:--------------------|:---------------------|:--------------------------------------|
+| **Language**        | Python 3.12+         | Runtime environment                   |
+| **App Framework**   | FastAPI              | API server                            |
+| **Agent Framework** | LangGraph, LangChain | Agent orchestration                   |
+| **Database**        | MSSQL Server         | Transactional and conversational data |
+| **Vector DB**       | Qdrant               | RAG database                          |
+| **LLM**             | Anthropic Claude     | Text generation and classification    |
 
 
-%% human handoff arrows (curved like sketch)
-D -.-> Human
-Human -.-> D
-E -.-> F
-F -.-> E
-A -.-> F
-F -.-> A
+---
+## Product Screenshot
+![MAS-DEV Sample](doc/chart_screenshot.png)
 
-%% completion arrows
-A --> Result
-B --> Result
-C --> Result
-D --> Result
-E --> Result
-````
+---
 
-
-## Key Features
-
-### Intelligent Agent System
-- **Orchestrator Agent**: Intent classification, agent routing, conversation management
-- **Information Synthesis Agent (ISA)**: Telemetry aggregation, statistical analysis, risk assessment
-- **Specialized Worker Agents**: Anomaly detection, predictive maintenance, inventory management
-- **Foundation Models**: Integration with Claude Sonnet 4, local LLMs via MCP
-
-## Agent Architecture (LangChain-Style Specifications)
+## Agent Architecture (LangChain Framework)
 
 The MAS-DEV system employs six specialized agents, each designed with specific roles, tools, and policies to handle industrial asset management workflows.
 
@@ -230,6 +193,55 @@ The MAS-DEV system employs six specialized agents, each designed with specific r
 
 ---
 
+### MAS Orchestration Pattern:
+
+```mermaid
+flowchart TD
+
+%% ====== STYLES ======
+classDef agent fill:#e7e0ff,stroke:#b8a8f0,stroke-width:1px,color:#000
+classDef human fill:#c4a8ff,stroke:#b8a8f0,stroke-width:1px,color:#000
+classDef rag fill:#efe6ff,stroke:#b8a8f0,stroke-width:1px,color:#000
+classDef io fill:#9b47d9,stroke:#b8a8f0,stroke-width:1px,color:#000
+
+%% ====== NODES ======
+Input(["Input"]):::io
+
+A["Orchestrator Agent <br/>(Q&A, assign agent)"]:::agent
+B["ISA Agent<br/>"]:::agent
+C["INV Agent <br/>"]:::agent
+D["MSA Agent <br/>"]:::agent
+E["RCA Agent <br/>"]:::agent
+F["RAG Agent <br/>"]:::agent
+
+Human["Human"]:::human
+Result(["Result"]):::io
+
+%% ====== POSITIONING ======
+Input --> A
+A -->|Asset Performance| B
+A -->|Inventory Management| C
+A -->|Maintenance Scheduling| D
+A -->|Root Cause & Solution| E
+
+
+%% human handoff arrows (curved like sketch)
+D -.-> Human
+Human -.-> D
+E -.-> F
+F -.-> E
+A -.-> F
+F -.-> A
+
+%% completion arrows
+A --> Result
+B --> Result
+C --> Result
+D --> Result
+E --> Result
+````
+
+---
 
 ### Agent-to-Database Mapping
 
@@ -242,7 +254,7 @@ The MAS-DEV system employs six specialized agents, each designed with specific r
 | **PMA**                | Process DB          | AgentOps DB  | Vector DB (models)                        | 🔵 Planned            |
 | **ADA**                | Process DB          | AgentOps DB  | Vector DB (baselines)                     | 🔵 Planned            |
 
-#### Detailed Agent Database Usage
+### Detailed Agent Database Usage
 
 **AOM (Asset Operations Management - Orchestrator)** - ✅ Active
 - **Primary:** AgentOps DB (MSSQL)
@@ -427,6 +439,7 @@ flowchart TD
     style U fill:#ffeb3b,stroke:#f57f17,stroke-width:2px,color:#000
     
 ```
+---
 
 ### Sequence Diagram Example for Performance Analysis Agent / ISA
 
@@ -482,6 +495,8 @@ sequenceDiagram
     G-->>API: result (ISA)
     API-->>U: ISA summary/data (mode=discussion)
 ```
+
+---
 
 ### Request Flow Explanation
 
@@ -690,19 +705,7 @@ All configuration files are located in `aom/config/`:
 - **`api_config.yaml`**: External API endpoints
 - **`rag_config.yaml`**: Config for extract/chunking, embedding, and retrieval
 
-## Technology Stack
-
-### Core Technologies
-
-| Category            | Technology           | Purpose                               |
-|:--------------------|:---------------------|:--------------------------------------|
-| **Language**        | Python 3.12+         | Runtime environment                   |
-| **App Framework**   | FastAPI              | API server                            |
-| **Agent Framework** | LangGraph, LangChain | Agent orchestration                   |
-| **Database**        | MSSQL Server         | Transactional and conversational data |
-| **Vector DB**       | Qdrant               | RAG database                          |
-| **LLM**             | Anthropic Claude     | Text generation and classification    |
-
+---
 
 ## Contributors
 | Name       | GitHub                                    | Area                                  |
