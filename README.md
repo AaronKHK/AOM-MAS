@@ -1,2 +1,2 @@
 # AOM-MAS
-AOM-MAS User GUide
+AOM-MAS User Guide
