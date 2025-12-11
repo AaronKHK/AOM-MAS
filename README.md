@@ -1,6 +1,8 @@
 # Multi-Agent System for AOM - Distributed Intelligence. Unified Insight."
 
-> **A multi-agent orchestration platform** for analyzing industrial equipment telemetry, detecting anomalies, and generating actionable insights through the collaboration among specialized expert agents.
+> **A multi-agent orchestration platform** for analyzing industrial equipment telemetry, detecting anomalies, managing inventory operations, planning maintenance, and generating actionable insights through the collaboration of specialized expert agents.
+> Each specialized expert agent is equipped with MCP tools that query curated operational data and asset metadata, while RAG pipelines retrieve vetted technical documents and manuals as contextual grounding.
+> This ensures grounded reasoning, deterministic data sources, and fully traceable evidence for every recommendation and action taken.
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
