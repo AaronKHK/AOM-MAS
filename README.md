@@ -709,6 +709,17 @@ All configuration files are located in `aom/config/`:
 
 ---
 
+## License & Credits
+
+- **DocLayout-YOLO**: Document layout analysis model
+  - https://github.com/opendatalab/DocLayout-YOLO
+- **EmbeddingGemma**: Google's embedding model
+  - https://huggingface.co/google/embeddinggemma-300m
+- **Qdrant**: Vector database for similarity search
+- **PyMuPDF**: PDF processing library
+  
+---
+
 ## Contributors
 | Name       | GitHub                                    | Area                                  |
 |------------|-------------------------------------------|---------------------------------------|
