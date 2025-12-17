@@ -20,19 +20,23 @@
 ### Key Features
 
 - **Orchestrator Agent**: Intent classification, agent routing, conversation management
-- **Information Synthesis Agent (ISA)**: Telemetry aggregation, statistical analysis, risk assessment
-- **Specialized Worker Agents**: Anomaly detection, predictive maintenance, inventory management
-- **Foundation Models**: Integration with Claude Sonnet 4, local LLMs via MCP
+- **Asset Performance Analysis Agent**: Statistical analysis of asset telemetry, provide operational status and risk assessment summary report.
+- **Root Cause Analysis Agent**: Asset diagnosis, root causes identification and solution recommendation based on historical data and knowledge base.
+- **Maintenance Scheduling Agent**: Track and monitor asset maintenance schedules, provide work order drafts and maintenance planning.
+- **Inventory Management Agent**: Monitor spare parts and consumable availability, provide stock status alerts, and support inventory decision-making.
+- **Anomaly Detection Agent**: Health index and anomaly detection.
+- **Foundation Models**: Integration with Claude Sonnet 4 and local LLMs
+- **Multi-agent Framework**: LangGraph, LangChain with MCP protocol.
 
 ### The system consists of four main layers:
 
 1. **External Sources Layer**: Integration with warehouse systems, CMMS, historians, and event data
 2. **Multi-Agent System Core**:
-   - **Tools & Connectors**: Online search, RAG, business logics, agent profiles, tools & connectors
-   - **Multi-Agents**: Specialized agents (ISA, Anomaly Detection, Maintenance Scheduling, etc.)
+   - **Tools & Connectors**: Online search, RAG, business logics, agent profiles, tools & connectors (SQL, MQTT, API)
+   - **Multi-Agents**: Specialized agents (asset performance, inventory management, maintenance scheduling, root cause analysis, anomaly detection)
    - **Orchestrator**: AOM API, Planning, and Guardrails
    - **Memory Layer**: Graph DB, Object Storage, Process DB, Data Catalog, Vector DB (Qdrant), AgentOps DB (MSSQL)
-3. **AOM Application**: ChatBot and XMPRO Web App interfaces
+3. **AOM Application**: ChatBot, Web App interfaces via FastAPI
 
 ---
 
@@ -54,70 +58,82 @@
 
 ---
 
-## Agent Architecture (LangChain Framework)
+## Agent Architecture (LangGraph / LangChain Framework)
 
 The MAS-DEV system employs six specialized agents, each designed with specific roles, tools, and policies to handle industrial asset management workflows.
 
 ### 1) Maintenance Scheduling Agent (MSA)
 
-**Role**: Convert OEM-defined PM inputs into dated PM schedules + WO drafts.
+**Role**: Query and filter maintenance work orders, then return a table-ready result for maintenance scheduling and history review (by asset, date range, technician, status, WO number).
 
 **Goals**: Optimal PM cadence; minimize downtime; align parts and man power.
 
 **Inputs**:
-- `asset_id`, `last_service_date`, `OEM_spec_ref`
-- `RUL` (optional), `manpower_roster`, `shift_calendar`
+- `asset_id` (optional): Filter work orders for a specific asset
+- `start_date` (optional): Include work orders on/after this date (applied to `create_date` by default)
+- `end_date` (optional): Include work orders on/before this date (applied to `create_date` by default)
+- `wo_no` (optional): Filter by work order number (exact match)
+- `maintenance_by` (optional): Filter by technician / person performing maintenance (case-insensitive contains)
+- `status` (optional): Filter by work order status (case-insensitive exact match, e.g., `COMPLETED`, `SCHED`, `INPROG`, `RESCHED`)
+- `db_profile` (optional): Database profile for the maintenance data source
 
 **Outputs**:
-- `work_order_draft` (tasks, parts, man-hours, window, hazards, SOP refs)
-- `schedule` (dates, headcount, dependencies)
+- `summary`: `"table"` when results exist; otherwise a human-readable message explaining no data / no matches
+- `table`: List of work orders (list of dict records) for UI rendering; `None` when no matches
+- `work_order_draft` (tasks, parts, man-hours, window, hazards, SOP refs) - `PLANNED`
+- `schedule` (dates, headcount, dependencies) - `PLANNED`
 
 **Tools**:
-- `rag_search` (OEM/SOP)
-- `text_to_sql` (calendar/resources)
-- `cmms_api` (WO draft)
-- `physics_models` (if pumps/fans)
-- `text_processing`
+- `mssql_maint_query`
 
-**Memory**: Recent work orders, asset maintenance history pointers, OEM doc embeddings.
+**Memory**: Cached filter parameters, date parsing defaults, common technician/status normalization rules.
 
-**Policies/Guardrails**: Require human approval to issue WO; cite SOP version; flags conflicts with production calendar.
+**Policies**: Use database work orders as source of truth; apply filters conservatively (no invented records);
+return `table: None` with an explicit reason when no matches are found. 
+Require human approval to issue WO; cite SOP version; flags conflicts with production calendar.
 
 ---
 
 ### 2) Inventory Management Agent (INV)
 
-**Role**: Monitor spare parts and consumable availability, provide stock status alerts, and support inventory decision-making.
+**Role**: Inventory and spare-parts intelligence—query stock by part/asset, surface low-stock risks, and generate procurement/maintenance-ready summaries.
 
-**Query Modes**:
-`Part-specific query` (part_number provided): Detailed information for a specific part
-`Asset-specific query` (asset_id provided): All parts compatible with an asset type
-`Stock alerts query` (no parameters): All parts with WARNING or CRITICAL stock levels
+**Goals**: Ensure critical spares availability; minimize stock-out risk;
+optimize inventory holding while aligning parts readiness with maintenance demand.
 
 **Inputs**:
-- `asset_id` (required): Asset identifier for asset-type inventory lookup
-- `part_number` (required): Specific part number for detailed part information
-- `db_profile` (optional): Database profile for an inventory data source
+- `query_mode` (optional): Query mode selector (e.g., "critical_alert", "system_enquiry", default handled by agent)
+- `asset_id` (optional): Filter parts mapped to a specific asset (via derived asset_category)
+- `part_number` (optional): Lookup a specific part by exact part number
+- `part_category` (optional): Filter parts by category (e.g., "Bearings", "Electrical")
+- `part_name` (optional): Partial match search on part name (case-insensitive)
+- `db_profile` (optional): Database profile for inventory and metadata sources
 
 **Outputs**:
-- `summary`: Natural language inventory analysis
-- `raw_data`: Structured inventory records
-- `query`: Query metadata (mode, asset_id, part_number, total_parts)
+- `summary`: Natural language inventory insight (availability, risk level, recommended actions)
+- `raw_data`: Filtered inventory records returned as structured data
+- `query`: Echo of resolved query context (`asset_id`, `part_number`, `asset_category`, `query_mode`)
+- `summary` (error cases): Inventory/metadata fetch failure, no inventory data, part not found, asset not found, or insufficient info
 
 **Tools**:
-- `mssql_inv_query_tool`
+- `mssql_inv_query`
+- `mssql_metadata_query`
 - `llm_summarize`
-- `mssql_metadata_query_tool`
 
-**Memory**: MPR/WH data; open PRs, supplier SLA, typical consumption rates.
+**Memory**: Cached asset-to-category mapping logic, common part-name search terms, prompt templates, stock status thresholds (min_stock).
 
-**Policies**: No auto-PR without approval; avoid overbuying if `on_hand + in_transit > max`.
+**Policies**: Prefer database inventory/metadata as source of truth; clearly signal when no records match;
+return actionable guidance (e.g., reorder/track critical spares) when stock coverage is missing.
+Require human approval to issue WO
 
 ---
 
-### 3) Information Synthesis Agent (ISA)
+### 3) Asset Performance Analysis Agent / Information Synthesis Agent (ISA)
 
 **Role**: Multi-source retrieval/ETL, summaries, trend packs.
+
+**Goals**: Continuously assess asset health; detect early performance degradation;
+provide reliable trends and risk signals to support timely operational and maintenance decisions.
 
 **Inputs**:
 - `asset_id` (required): Asset identifier for telemetry lookup
@@ -140,29 +156,53 @@ The MAS-DEV system employs six specialized agents, each designed with specific r
 
 **Memory**: Cached query plans, data source catalog, embeddings for manuals.
 
-**Policies**: Respect data lineage; mark approximations; respect PII/secret scrubbing.
+**Policies**: Use telemetry data as the primary source of truth, clearly indicate when trends are aggregated or downsampled,
+avoid causal claims by reporting only observed correlations or anomalies, and explicitly flag insufficient data coverage or poor signal quality.
 
 ---
 
 ### 4) Root Cause Analysis Agent (RCA)
 
-**Role**: Utilizing knowledge base and historical data, identify root causes and solution of failures..
+**Role**: Identify root causes and recommend solutions for equipment alerts using:
+asset metadata, historical telemetry, knowledge-base evidence and asset performance from ISA agent.
+Supports both workflow-driven alert handling and ad-hoc RCA requests.
 
-**Inputs**: `AlertAdditionInfo`, timestamp, alert id, cause, solution `RecommendationAlert`, alert id, title, description, status.
+**Goals**: Based on asset diagnosis and failure mode, identify the most probable root-causes and solution recommendation with evidence-backed reasoning;
+recommend practical corrective actions to prevent recurrence; improve alert resolution speed while keeping conclusions traceable and engineer-verifiable.
 
-**Outputs**: `AlertAdditionInfo` (update cause and solution columns).
+**Inputs**:
+- `alert_id` (optional): Alert unique identifier
+- `asset_id` (optional): Asset identifier associated with the alert
+- `title` (required): Alert or request title
+- `description` (required): Alert description or user RCA request
+- `timestamp` (optional): Alert trigger time (ISO8601 or datetime)
+- `cause` (optional): Existing root cause (if available)
+- `resolution` (optional): Existing solution or recommendation (if available)
+- `status` (optional): Alert status (e.g. open / closed)
+- `db_profile` (optional): Database profile for metadata and telemetry lookup
+- `workflow_flag` (required): Enable workflow-based RCA execution path
+
+**Outputs**:
+- `summary`: HTML-formatted RCA diagnosis, root cause, solution, and citations (for workflow-based execution)
+- `summary`: RCA diagnosis, root cause, solution, and citations
 
 **Tools**:
-- `mssql_recom_query` (query, merge and clean alert and recommendation tables)
-  - `mssql_metadata_query`, `mssql_ts_query`, `llm_summarize`, `retrieve_context`
+- `mssql_metadata_query`
+- `mssql_recom_query`
+- `mssql_ts_query`
+- `mssql_ts_date_range`
+- `retrieve_context`
+- `llm_summarize`
+- `ISAAgent` (optional)
 
-**Memory**: Model version, calibration slices, error bounds.
+**Memory**: Prompt templates, model version, RAG retrieval parameters, calibration windows, error-handling paths.
 
-**Policies**: 
+**Policies**: Prefer retrieved document context over general knowledge; do not invent facts when evidence is insufficient;
+clearly state uncertainty; ensure outputs are traceable and suitable for human validation.
 
 ---
 
-### 5) Anomaly Detection Agent (ADA)
+### 5) Anomaly Detection Agent (ADA) - `PLANNED`
 
 **Role**: Health index and anomaly detection (live/adhoc).
 
@@ -176,22 +216,6 @@ The MAS-DEV system employs six specialized agents, each designed with specific r
 **Memory**: Per-asset baseline and seasonal profiles.
 
 **Policies**: Show evidence (score/stats); never alarm without threshold and rationale.
-
----
-
-### 6) Asset Operations Management Agent (AOM, Orchestrator)
-
-**Role**: Single pane of glass; plan, explain, and approve.
-
-**Inputs**: User prompt/intents, `asset_id`, timeframe.
-
-**Outputs**: Consolidated `asset_overview`, decisions, actions, explainability.
-
-**Tools**: `tools_all`, `mcp`, `report_export`.
-
-**Memory**: Asset knowledge graph pointers; last month's decisions; stakeholder prefs.
-
-**Policies**: Require approvals for WO/PR; attach and cite sources; summarize in business terms, All actions require user confirmation
 
 ---
 
@@ -238,6 +262,7 @@ F -.-> A
 %% completion arrows
 A --> Result
 B --> Result
+B --> E
 C --> Result
 D --> Result
 E --> Result
@@ -251,9 +276,9 @@ E --> Result
 |------------------------|---------------------|--------------|-------------------------------------------|-----------------------|
 | **AOM (Orchestrator)** | AgentOps DB (MSSQL) | Process DB   | LangGraph State                           | ✅ **Active**          |
 | **ISA**                | Process DB (MSSQL)  | AgentOps DB  | Config Files (agents.yaml, iso10816.json) | ✅ **Active**          |
-| **MSA**                | Process DB          | AgentOps DB  | Vector DB (OEM docs)                      | 🔵 Planned            |
+| **RCA**                | Process DB (MSSQL)  | AgentOps DB  | Vector DB (OEM docs)                      | ✅ **Active**          |
 | **INV**                | Process DB (MSSQL)  | AgentOps DB  | Config Files (agents.yaml)                | ✅ **Active**          |
-| **PMA**                | Process DB          | AgentOps DB  | Vector DB (models)                        | 🔵 Planned            |
+| **MSA**                | Process DB          | AgentOps DB  | Vector DB (models)                        | 🔵 Planned            |
 | **ADA**                | Process DB          | AgentOps DB  | Vector DB (baselines)                     | 🔵 Planned            |
 
 ### Detailed Agent Database Usage
@@ -269,7 +294,7 @@ E --> Result
   - `last_asset_id`, `last_start_date`, `last_end_date`
   - `last_isa_result`, `mode`, `conversation_history`
 
-**ISA (Information Synthesis Agent)** - ✅ Active
+**ISA (Asset Performance / Information Synthesis Agent)** - ✅ Active
 - **Primary:** Process DB (MSSQL)
   - `asset_meta` table: Asset metadata (maker, rated_power_Kw, rated_voltage_v)
   - `asset_data` table: Time-series telemetry (temperature_c, vibration_mm_s)
@@ -280,7 +305,7 @@ E --> Result
   - `aom/policy/iso10816.json`: Vibration standards
   - **Note:** No Vector DB for manuals (uses static JSON policies)
 
-**MSA (Maintenance Scheduling Agent)** - 🔵 In Progress
+**MSA (Maintenance Scheduling Agent)** - ✅ Active
 - **Primary:** Process DB (MSSQL)
   - Work orders, maintenance schedules, SOP references
 - **Secondary:** AgentOps DB
@@ -297,12 +322,14 @@ E --> Result
 - **Memory:** File-based configuration
   - `aom/config/agents.yaml`: Prompts, model settings
 
-**RCA (Root Cause Analysis Agent)** - 🔵 In progress
+**RCA (Root Cause Analysis Agent)** - ✅ Active
 - **Primary:** Process DB, Vector DB
   - Knowledge base, historical data
   - Service history, failure patterns
 - **Secondary:** AgentOps DB
   - Model inference logs, prediction accuracy
+- **Memory:** Vector DB
+  - Technical documents, RAG retrieval parameters
 
 **ADA (Anomaly Detection Agent)** - 🔵 Planned
 - **Primary:** Process DB
@@ -598,13 +625,14 @@ sequenceDiagram
 
 ### Key Directories Explained
 
+
 | Directory             | Purpose                    | Key Files                                            |
 |-----------------------|----------------------------|------------------------------------------------------|
 | **`aom/agents/`**     | Agent implementations      | `orchestrator.py`, `isa.py`, `rca.py`, `inv.py`      |
 | **`aom/mcp_server/`** | Tool server (MCP protocol) | `server.py`                                          |
 | **`aom/tools/`**      | Agent's Tool & Integration | `llm_summarizer.py`, `sql_connect.py`, `retrieve.py` |
 | **`aom/utils/`**      | Utilities & Helpers        | `utilities.py`, `agent_helpers.py`, `graph.py`       |
-| **`aom/services/`**   | Business logic             | `asset_catalog.py`, `extractor.py`,                  |
+| **`aom/services/`**   | Business logic and service | `asset_catalog.py`, `extractor.py`, `mqtt_broker.py` |
 | **`aom/webui/`**      | Chatbot webpage            | `index.html`, `index_dark.html`, `index_light.html`  |
 | **`config/`**         | Configuration & prompts    | `agents.yaml`, `sql_config.yaml`                     |
 | **`docker/`**         | Containerization           | `Dockerfile`, `docker-compose.yml`                   |
